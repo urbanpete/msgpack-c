@@ -56,20 +56,28 @@ nobase_include_HEADERS += \
 		../include/msgpack.hpp \
 		../include/msgpack/adaptor/adaptor_base.hpp \
 		../include/msgpack/adaptor/bool.hpp \
+		../include/msgpack/adaptor/boost/fusion.hpp \
+		../include/msgpack/adaptor/boost/optional.hpp \
+		../include/msgpack/adaptor/boost/string_ref.hpp \
 		../include/msgpack/adaptor/char_ptr.hpp \
 		../include/msgpack/adaptor/check_container_size.hpp \
 		../include/msgpack/adaptor/cpp11/array.hpp \
 		../include/msgpack/adaptor/cpp11/array_char.hpp \
 		../include/msgpack/adaptor/cpp11/forward_list.hpp \
+		../include/msgpack/adaptor/cpp11/shared_ptr.hpp \
 		../include/msgpack/adaptor/cpp11/tuple.hpp \
+		../include/msgpack/adaptor/cpp11/unique_ptr.hpp \
 		../include/msgpack/adaptor/cpp11/unordered_map.hpp \
 		../include/msgpack/adaptor/cpp11/unordered_set.hpp \
 		../include/msgpack/adaptor/define.hpp \
 		../include/msgpack/adaptor/deque.hpp \
-		../include/msgpack/adaptor/detail/cpp03_define.hpp \
+		../include/msgpack/adaptor/detail/cpp03_define_map.hpp \
+		../include/msgpack/adaptor/detail/cpp03_define_array.hpp \
 		../include/msgpack/adaptor/detail/cpp03_msgpack_tuple.hpp \
-		../include/msgpack/adaptor/detail/cpp11_define.hpp \
+		../include/msgpack/adaptor/detail/cpp11_define_array.hpp \
+		../include/msgpack/adaptor/detail/cpp11_define_map.hpp \
 		../include/msgpack/adaptor/detail/cpp11_msgpack_tuple.hpp \
+		../include/msgpack/adaptor/ext.hpp \
 		../include/msgpack/adaptor/fixint.hpp \
 		../include/msgpack/adaptor/float.hpp \
 		../include/msgpack/adaptor/int.hpp \
@@ -79,6 +87,7 @@ nobase_include_HEADERS += \
 		../include/msgpack/adaptor/nil.hpp \
 		../include/msgpack/adaptor/pair.hpp \
 		../include/msgpack/adaptor/raw.hpp \
+		../include/msgpack/adaptor/v4raw.hpp \
 		../include/msgpack/adaptor/set.hpp \
 		../include/msgpack/adaptor/string.hpp \
 		../include/msgpack/adaptor/tr1/unordered_map.hpp \
@@ -91,6 +100,7 @@ nobase_include_HEADERS += \
 		../include/msgpack/detail/cpp11_zone.hpp \
 		../include/msgpack/fbuffer.hpp \
 		../include/msgpack/iterator.hpp \
+		../include/msgpack/meta.hpp \
 		../include/msgpack/object.hpp \
 		../include/msgpack/object_fwd.hpp \
 		../include/msgpack/pack.hpp \

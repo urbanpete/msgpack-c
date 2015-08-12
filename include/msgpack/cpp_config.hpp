@@ -24,7 +24,7 @@
   // If MSVC would support C++11 completely,
   // then 'defined(_MSC_VER)' would replace with
   // '_MSC_VER < XXXX'
-# if (__cplusplus < 201103) && !defined(_MSC_VER)
+# if (__cplusplus < 201103L) && !defined(_MSC_VER)
 #  define MSGPACK_USE_CPP03
 # endif
 # if defined(_MSC_VER) && (_MSC_VER < 1900)
@@ -35,10 +35,10 @@
 
 
 #if defined __cplusplus
-#if __cplusplus < 201103
+#if __cplusplus < 201103L
 
 #if !defined(nullptr)
-#  if _MSC_VER < 1600 
+#  if _MSC_VER < 1600
 #    define nullptr (0)
 #  endif
 #endif
@@ -80,14 +80,14 @@ template <typename T>
 struct enable_if<false, T> {
 };
 
-/// @cond
+// @cond
 }  // MSGPACK_API_VERSION_NAMESPACE(v1)
 /// @endcond
 
 }  // namespace msgpack
 
 
-#else  // __cplusplus < 201103
+#else  // __cplusplus < 201103L
 
 #include <memory>
 #include <tuple>
@@ -113,7 +113,7 @@ MSGPACK_API_VERSION_NAMESPACE(v1) {
 }  // namespace msgpack
 
 
-#endif // __cplusplus < 201103
+#endif // __cplusplus < 201103L
 
 #endif // __cplusplus
 

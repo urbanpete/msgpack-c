@@ -22,6 +22,7 @@
 #include "msgpack/versioning.hpp"
 #include "msgpack/adaptor/adaptor_base.hpp"
 #include "msgpack/adaptor/check_container_size.hpp"
+#include "msgpack/meta.hpp"
 
 #include <array>
 
@@ -32,6 +33,60 @@ MSGPACK_API_VERSION_NAMESPACE(v1) {
 /// @endcond
 
 namespace adaptor {
+
+namespace detail {
+
+namespace array {
+
+template<typename T, std::size_t N1, std::size_t... I1, std::size_t N2, std::size_t... I2>
+inline std::array<T, N1+N2> concat(
+    std::array<T, N1>&& a1,
+    std::array<T, N2>&& a2,
+    msgpack::seq<I1...>,
+    msgpack::seq<I2...>) {
+    return {{ std::move(a1[I1])..., std::move(a2[I2])... }};
+}
+
+template<typename T, std::size_t N1, std::size_t N2>
+inline std::array<T, N1+N2> concat(std::array<T, N1>&& a1, std::array<T, N2>&& a2) {
+    return concat(std::move(a1), std::move(a2), msgpack::gen_seq<N1>(), msgpack::gen_seq<N2>());
+}
+
+template <typename T, std::size_t N>
+struct as_impl {
+    static std::array<T, N> as(msgpack::object const& o) {
+        msgpack::object* p = o.via.array.ptr + N - 1;
+        return concat(as_impl<T, N-1>::as(o), std::array<T, 1>{{p->as<T>()}});
+    }
+};
+
+template <typename T>
+struct as_impl<T, 1> {
+    static std::array<T, 1> as(msgpack::object const& o) {
+        msgpack::object* p = o.via.array.ptr;
+        return std::array<T, 1>{{p->as<T>()}};
+    }
+};
+
+template <typename T>
+struct as_impl<T, 0> {
+    static std::array<T, 0> as(msgpack::object const&) {
+        return std::array<T, 0>();
+    }
+};
+
+} // namespace array
+
+} // namespace detail
+
+template <typename T, std::size_t N>
+struct as<std::array<T, N>, typename std::enable_if<msgpack::has_as<T>::value>::type> {
+    std::array<T, N> operator()(msgpack::object const& o) const {
+        if(o.type != msgpack::type::ARRAY) { throw msgpack::type_error(); }
+        if(o.via.array.size != N) { throw msgpack::type_error(); }
+        return detail::array::as_impl<T, N>::as(o);
+    }
+};
 
 template <typename T, std::size_t N>
 struct convert<std::array<T, N>> {

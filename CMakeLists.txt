@@ -17,6 +17,7 @@ SET (includedir "\${prefix}/include")
 
 OPTION (MSGPACK_CXX11 "Using c++11 compiler" OFF)
 OPTION (MSGPACK_32BIT "32bit compile" OFF)
+OPTION (MSGPACK_BOOST "Using boost libraries" OFF)
 
 IF (MSGPACK_CXX11)
    IF ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -38,6 +39,10 @@ IF (MSGPACK_32BIT)
       SET (CMAKE_C_FLAGS "-m32 ${CMAKE_C_FLAGS}")
       SET (CMAKE_EXE_LINKER_FLAGS "-m32 ${CMAKE_EXE_LINKER_FLAGS}")
    ENDIF ()
+ENDIF ()
+
+IF (MSGPACK_BOOST)
+   SET (CMAKE_CXX_FLAGS "-DMSGPACK_USE_BOOST ${CMAKE_CXX_FLAGS}")
 ENDIF ()
 
 FIND_PACKAGE (GTest)
@@ -84,8 +89,10 @@ LIST (APPEND msgpack_HEADERS
     include/msgpack/util.h
     include/msgpack/sysdep.h
     include/msgpack/gcc_atomic.h
+    include/msgpack.h
     include/msgpack/sbuffer.h
     include/msgpack/version.h
+    include/msgpack/version_master.h
     include/msgpack/vrefbuffer.h
     include/msgpack/zbuffer.h
     include/msgpack/fbuffer.h
@@ -100,20 +107,28 @@ IF (MSGPACK_ENABLE_CXX)
         include/msgpack.hpp
         include/msgpack/adaptor/adaptor_base.hpp
         include/msgpack/adaptor/bool.hpp
+        include/msgpack/adaptor/boost/fusion.hpp
+        include/msgpack/adaptor/boost/optional.hpp
+        include/msgpack/adaptor/boost/string_ref.hpp
         include/msgpack/adaptor/char_ptr.hpp
         include/msgpack/adaptor/check_container_size.hpp
         include/msgpack/adaptor/cpp11/array.hpp
         include/msgpack/adaptor/cpp11/array_char.hpp
         include/msgpack/adaptor/cpp11/forward_list.hpp
+        include/msgpack/adaptor/cpp11/shared_ptr.hpp
         include/msgpack/adaptor/cpp11/tuple.hpp
+        include/msgpack/adaptor/cpp11/unique_ptr.hpp
         include/msgpack/adaptor/cpp11/unordered_map.hpp
         include/msgpack/adaptor/cpp11/unordered_set.hpp
         include/msgpack/adaptor/define.hpp
         include/msgpack/adaptor/deque.hpp
-        include/msgpack/adaptor/detail/cpp03_define.hpp
+        include/msgpack/adaptor/detail/cpp03_define_array.hpp
+        include/msgpack/adaptor/detail/cpp03_define_map.hpp
         include/msgpack/adaptor/detail/cpp03_msgpack_tuple.hpp
-        include/msgpack/adaptor/detail/cpp11_define.hpp
+        include/msgpack/adaptor/detail/cpp11_define_array.hpp
+        include/msgpack/adaptor/detail/cpp11_define_map.hpp
         include/msgpack/adaptor/detail/cpp11_msgpack_tuple.hpp
+        include/msgpack/adaptor/ext.hpp
         include/msgpack/adaptor/fixint.hpp
         include/msgpack/adaptor/float.hpp
         include/msgpack/adaptor/int.hpp
@@ -123,6 +138,7 @@ IF (MSGPACK_ENABLE_CXX)
         include/msgpack/adaptor/nil.hpp
         include/msgpack/adaptor/pair.hpp
         include/msgpack/adaptor/raw.hpp
+        include/msgpack/adaptor/v4raw.hpp
         include/msgpack/adaptor/set.hpp
         include/msgpack/adaptor/string.hpp
         include/msgpack/adaptor/tr1/unordered_map.hpp
@@ -134,6 +150,8 @@ IF (MSGPACK_ENABLE_CXX)
         include/msgpack/detail/cpp03_zone.hpp
         include/msgpack/detail/cpp11_zone.hpp
         include/msgpack/fbuffer.hpp
+        include/msgpack/iterator.hpp
+        include/msgpack/meta.hpp
         include/msgpack/object.hpp
         include/msgpack/object_fwd.hpp
         include/msgpack/pack.hpp
@@ -162,6 +180,7 @@ INCLUDE_DIRECTORIES (
     ./
     include/
     ${CMAKE_CURRENT_BINARY_DIR}/include/
+    ${MSGPACK_BOOST_DIR}
 )
 
 ADD_LIBRARY (msgpack SHARED
@@ -180,15 +199,16 @@ SET_TARGET_PROPERTIES (msgpack PROPERTIES SOVERSION 3 VERSION 4.0.0)
 
 IF (MSGPACK_BUILD_TESTS)
     ENABLE_TESTING ()
-    SET(CTEST_MEMORYCHECK_COMMAND "/usr/bin/valgrind")
+    # MEMORYCHECK_COMMAND_OPTIONS needs to place prior to CTEST_MEMORYCHECK_COMMAND
+    SET (MEMORYCHECK_COMMAND_OPTIONS "--leak-check=full --show-leak-kinds=definite,possible --error-exitcode=1")
+    FIND_PROGRAM(CTEST_MEMORYCHECK_COMMAND NAMES valgrind)
     INCLUDE(Dart)
-    SET(MEMORYCHECK_COMMAND_OPTIONS "--leak-check=full --error-exitcode=1")
     ADD_SUBDIRECTORY (test)
 ENDIF ()
 
 IF ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    SET_PROPERTY (TARGET msgpack APPEND_STRING PROPERTY COMPILE_FLAGS "-Wall -g -O3 -DPIC")
-    SET_PROPERTY (TARGET msgpack-static APPEND_STRING PROPERTY COMPILE_FLAGS "-Wall -g -O3" )
+    SET_PROPERTY (TARGET msgpack APPEND_STRING PROPERTY COMPILE_FLAGS "-Wall -Wextra -Wno-mismatched-tags -Werror -g -O3 -DPIC")
+    SET_PROPERTY (TARGET msgpack-static APPEND_STRING PROPERTY COMPILE_FLAGS "-Wall -Wextra -Wno-mismatched-tags -Werror -g -O3" )
 ENDIF ()
 IF ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     IF (CMAKE_CXX_FLAGS MATCHES "/W[0-4]")
@@ -208,29 +228,47 @@ ENDIF ()
 
 INSTALL (TARGETS msgpack msgpack-static DESTINATION ${CMAKE_INSTALL_LIBDIR})
 INSTALL (DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
-INSTALL (FILES ${CMAKE_CURRENT_BINARY_DIR}/msgpack.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+IF (NOT MSVC)
+    INSTALL (FILES ${CMAKE_CURRENT_BINARY_DIR}/msgpack.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+ENDIF ()
 
 # Doxygen
 FIND_PACKAGE (Doxygen)
 IF (DOXYGEN_FOUND)
-    ADD_CUSTOM_TARGET (
-        doxygen_c
+    LIST (APPEND Doxyfile_c_CONTENT
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
         COMMAND ${CMAKE_COMMAND} -E echo "FILE_PATTERNS      = *.h" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
         COMMAND ${CMAKE_COMMAND} -E echo "OUTPUT_DIRECTORY   = doc_c" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
         COMMAND ${CMAKE_COMMAND} -E echo "INPUT              = ${CMAKE_CURRENT_SOURCE_DIR}/include" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
         COMMAND ${CMAKE_COMMAND} -E echo "EXTRACT_ALL        = YES" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
         COMMAND ${CMAKE_COMMAND} -E echo "PROJECT_NAME       = \"MessagePack for C\"" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
+    )
+    IF (DOXYGEN_DOT_FOUND)
+        LIST (APPEND Doxyfile_c_CONTENT
+            COMMAND ${CMAKE_COMMAND} -E echo "HAVE_DOT       = YES" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
+        )
+    ENDIF ()
+    ADD_CUSTOM_TARGET (
+        doxygen_c
+        ${Doxyfile_c_CONTENT}
         COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_c
         VERBATIM
     )
-    ADD_CUSTOM_TARGET (
-        doxygen_cpp
+    LIST (APPEND Doxyfile_cpp_CONTENT
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
         COMMAND ${CMAKE_COMMAND} -E echo "FILE_PATTERNS      = *.hpp" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
         COMMAND ${CMAKE_COMMAND} -E echo "OUTPUT_DIRECTORY   = doc_cpp" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
         COMMAND ${CMAKE_COMMAND} -E echo "INPUT              = ${CMAKE_CURRENT_SOURCE_DIR}/include" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
         COMMAND ${CMAKE_COMMAND} -E echo "EXTRACT_ALL        = YES" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
+    )
+    IF (DOXYGEN_DOT_FOUND)
+        LIST (APPEND Doxyfile_cpp_CONTENT
+            COMMAND ${CMAKE_COMMAND} -E echo "HAVE_DOT       = YES" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
+        )
+    ENDIF ()
+    ADD_CUSTOM_TARGET (
+        doxygen_cpp
+        ${Doxyfile_cpp_CONTENT}
         COMMAND ${CMAKE_COMMAND} -E echo "PROJECT_NAME       = \"MessagePack for C++\"" >> ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
         COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile_cpp
         VERBATIM

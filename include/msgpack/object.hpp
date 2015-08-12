@@ -29,12 +29,124 @@
 #include <limits>
 #include <ostream>
 #include <typeinfo>
+#include <iomanip>
 
 namespace msgpack {
 
 /// @cond
 MSGPACK_API_VERSION_NAMESPACE(v1) {
 /// @endcond
+
+class object_handle {
+public:
+    object_handle() {}
+
+    object_handle(msgpack::object const& obj, msgpack::unique_ptr<msgpack::zone> z) :
+        m_obj(obj), m_zone(msgpack::move(z)) { }
+
+    // obsolete
+    void set(msgpack::object const& obj)
+        { m_obj = obj; }
+
+    const msgpack::object& get() const
+        { return m_obj; }
+
+    msgpack::unique_ptr<msgpack::zone>& zone()
+        { return m_zone; }
+
+    const msgpack::unique_ptr<msgpack::zone>& zone() const
+        { return m_zone; }
+
+#if defined(MSGPACK_USE_CPP03)
+    struct object_handle_ref {
+        object_handle_ref(object_handle* oh):m_oh(oh) {}
+        object_handle* m_oh;
+    };
+
+    object_handle(object_handle& other):
+        m_obj(other.m_obj),
+        m_zone(msgpack::move(other.m_zone)) {
+    }
+
+    object_handle(object_handle_ref ref):
+        m_obj(ref.m_oh->m_obj),
+        m_zone(msgpack::move(ref.m_oh->m_zone)) {
+    }
+
+    object_handle& operator=(object_handle& other) {
+        m_obj = other.m_obj;
+        m_zone = msgpack::move(other.m_zone);
+        return *this;
+    }
+
+    object_handle& operator=(object_handle_ref ref) {
+        m_obj = ref.m_oh->m_obj;
+        m_zone = msgpack::move(ref.m_oh->m_zone);
+        return *this;
+    }
+
+    operator object_handle_ref() {
+        return object_handle_ref(this);
+    }
+#endif // defined(MSGPACK_USE_CPP03)
+
+private:
+    msgpack::object m_obj;
+    msgpack::unique_ptr<msgpack::zone> m_zone;
+};
+
+namespace detail {
+
+template <std::size_t N>
+inline std::size_t add_ext_type_size(std::size_t size) {
+    return size + 1;
+}
+
+template <>
+inline std::size_t add_ext_type_size<4>(std::size_t size) {
+    return size == 0xffffffff ? size : size + 1;
+}
+
+} // namespace detail
+
+inline std::size_t aligned_zone_size(msgpack::object const& obj) {
+    std::size_t s = 0;
+    switch (obj.type) {
+    case msgpack::type::ARRAY:
+        s += sizeof(msgpack::object) * obj.via.array.size;
+        for (uint32_t i = 0; i < obj.via.array.size; ++i) {
+            s += msgpack::aligned_zone_size(obj.via.array.ptr[i]);
+        }
+        break;
+    case msgpack::type::MAP:
+        s += sizeof(msgpack::object_kv) * obj.via.map.size;
+        for (uint32_t i = 0; i < obj.via.map.size; ++i) {
+            s += msgpack::aligned_zone_size(obj.via.map.ptr[i].key);
+            s += msgpack::aligned_zone_size(obj.via.map.ptr[i].val);
+        }
+        break;
+    case msgpack::type::EXT:
+        s += msgpack::aligned_size(
+            detail::add_ext_type_size<sizeof(std::size_t)>(obj.via.ext.size));
+        break;
+    case msgpack::type::STR:
+        s += msgpack::aligned_size(obj.via.str.size);
+        break;
+    case msgpack::type::BIN:
+        s += msgpack::aligned_size(obj.via.bin.size);
+        break;
+    default:
+        break;
+    }
+    return s;
+}
+
+inline object_handle clone(msgpack::object const& obj) {
+    std::size_t size = msgpack::aligned_zone_size(obj);
+    msgpack::unique_ptr<msgpack::zone> z(size == 0 ? nullptr : new msgpack::zone(size));
+    msgpack::object newobj = z.get() ? msgpack::object(obj, *z) : obj;
+    return object_handle(newobj, msgpack::move(z));
+}
 
 struct object::implicit_type {
     implicit_type(object const& o) : obj(o) { }
@@ -58,26 +170,26 @@ struct packer_serializer {
 } // namespace detail
 
 // Adaptor functors' member functions definitions.
-template <typename T>
+template <typename T, typename Enabler>
 inline
 msgpack::object const&
-msgpack::adaptor::convert<T>::operator()(msgpack::object const& o, T& v) const {
+msgpack::adaptor::convert<T, Enabler>::operator()(msgpack::object const& o, T& v) const {
     v.msgpack_unpack(o.convert());
     return o;
 }
 
-template <typename T>
+template <typename T, typename Enabler>
 template <typename Stream>
 inline
 msgpack::packer<Stream>&
-msgpack::adaptor::pack<T>::operator()(msgpack::packer<Stream>& o, T const& v) const {
+msgpack::adaptor::pack<T, Enabler>::operator()(msgpack::packer<Stream>& o, T const& v) const {
     return detail::packer_serializer<Stream, T>::pack(o, v);
 }
 
-template <typename T>
+template <typename T, typename Enabler>
 inline
 void
-msgpack::adaptor::object_with_zone<T>::operator()(msgpack::object::with_zone& o, T const& v) const {
+msgpack::adaptor::object_with_zone<T, Enabler>::operator()(msgpack::object::with_zone& o, T const& v) const {
     v.msgpack_object(static_cast<msgpack::object*>(&o), o.zone);
 }
 
@@ -368,7 +480,7 @@ inline bool operator!=(const msgpack::object& x, const msgpack::object& y)
 { return !(x == y); }
 
 template <typename T>
-inline bool operator==(const T& y, const msgpack::object x)
+inline bool operator==(const T& y, const msgpack::object& x)
 { return x == y; }
 
 template <typename T>
@@ -386,16 +498,20 @@ inline msgpack::object::implicit_type object::convert() const
 }
 
 template <typename T>
-inline void object::convert(T& v) const
+inline T& object::convert(T& v) const
 {
     msgpack::operator>>(*this, v);
+    return v;
 }
 
 template <typename T>
-inline void object::convert(T* v) const
+inline T* object::convert(T* v) const
 {
     convert(*v);
+    return v;
 }
+
+#if defined(MSGPACK_USE_CPP03)
 
 template <typename T>
 inline T object::as() const
@@ -405,6 +521,21 @@ inline T object::as() const
     return v;
 }
 
+#else  // defined(MSGPACK_USE_CPP03)
+
+template <typename T>
+inline typename std::enable_if<msgpack::has_as<T>::value, T>::type object::as() const {
+    return msgpack::adaptor::as<T>()(*this);
+}
+
+template <typename T>
+inline typename std::enable_if<!msgpack::has_as<T>::value, T>::type object::as() const {
+    T v;
+    convert(v);
+    return v;
+}
+
+#endif // defined(MSGPACK_USE_CPP03)
 
 inline object::object()
 {
@@ -583,7 +714,46 @@ inline std::ostream& operator<< (std::ostream& s, const msgpack::object& o)
         break;
 
     case msgpack::type::STR:
-        (s << '"').write(o.via.str.ptr, o.via.str.size) << '"';
+        s << '"';
+        for (uint32_t i = 0; i < o.via.str.size; ++i) {
+            char c = o.via.str.ptr[i];
+            switch (c) {
+            case '\\':
+                s << "\\\\";
+                break;
+            case '"':
+                s << "\\\"";
+                break;
+            case '/':
+                s << "\\/";
+                break;
+            case '\b':
+                s << "\\b";
+                break;
+            case '\f':
+                s << "\\f";
+                break;
+            case '\n':
+                s << "\\n";
+                break;
+            case '\r':
+                s << "\\r";
+                break;
+            case '\t':
+                s << "\\t";
+                break;
+            default: {
+                unsigned int code = static_cast<unsigned int>(c);
+                if (code < 0x20 || code == 0x7f) {
+                    s << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (code & 0xff);
+                }
+                else {
+                    s << c;
+                }
+            } break;
+            }
+        }
+        s << '"';
         break;
 
     case msgpack::type::BIN:
@@ -612,11 +782,11 @@ inline std::ostream& operator<< (std::ostream& s, const msgpack::object& o)
         s << "{";
         if(o.via.map.size != 0) {
             msgpack::object_kv* p(o.via.map.ptr);
-            s << p->key << "=>" << p->val;
+            s << p->key << ':' << p->val;
             ++p;
             for(msgpack::object_kv* const pend(o.via.map.ptr + o.via.map.size);
                     p < pend; ++p) {
-                s << ", " << p->key << "=>" << p->val;
+                s << ", " << p->key << ':' << p->val;
             }
         }
         s << "}";

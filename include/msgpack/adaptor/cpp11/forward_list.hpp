@@ -33,9 +33,24 @@ MSGPACK_API_VERSION_NAMESPACE(v1) {
 
 namespace adaptor {
 
-template <typename T>
-struct convert<std::forward_list<T>> {
-    msgpack::object const& operator()(msgpack::object const& o, std::forward_list<T>& v) const {
+template <typename T, typename Alloc>
+    struct as<std::forward_list<T, Alloc>, typename std::enable_if<msgpack::has_as<T>::value>::type> {
+    std::forward_list<T, Alloc> operator()(msgpack::object const& o) const {
+        if (o.type != msgpack::type::ARRAY) { throw msgpack::type_error(); }
+        std::forward_list<T, Alloc> v;
+        msgpack::object* p = o.via.array.ptr + o.via.array.size;
+        msgpack::object* const pend = o.via.array.ptr;
+        while (p != pend) {
+            --p;
+            v.push_front(p->as<T>());
+        }
+        return v;
+    }
+};
+
+template <typename T, typename Alloc>
+struct convert<std::forward_list<T, Alloc>> {
+    msgpack::object const& operator()(msgpack::object const& o, std::forward_list<T, Alloc>& v) const {
         if(o.type != msgpack::type::ARRAY) { throw msgpack::type_error(); }
         v.resize(o.via.array.size);
         msgpack::object* p = o.via.array.ptr;
@@ -47,10 +62,10 @@ struct convert<std::forward_list<T>> {
     }
 };
 
-template <typename T>
-struct pack<std::forward_list<T>> {
+template <typename T, typename Alloc>
+struct pack<std::forward_list<T, Alloc>> {
     template <typename Stream>
-    msgpack::packer<Stream>& operator()(msgpack::packer<Stream>& o, const std::forward_list<T>& v) const {
+    msgpack::packer<Stream>& operator()(msgpack::packer<Stream>& o, const std::forward_list<T, Alloc>& v) const {
         uint32_t size = checked_get_container_size(std::distance(v.begin(), v.end()));
         o.pack_array(size);
         for(auto const& e : v) o.pack(e);
@@ -58,9 +73,9 @@ struct pack<std::forward_list<T>> {
     }
 };
 
-template <typename T>
-struct object_with_zone<std::forward_list<T>> {
-    void operator()(msgpack::object::with_zone& o, const std::forward_list<T>& v) const {
+template <typename T, typename Alloc>
+struct object_with_zone<std::forward_list<T, Alloc>> {
+    void operator()(msgpack::object::with_zone& o, const std::forward_list<T, Alloc>& v) const {
         o.type = msgpack::type::ARRAY;
         if(v.empty()) {
             o.via.array.ptr = nullptr;
